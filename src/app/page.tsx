@@ -1,69 +1,143 @@
-import Link from "next/link";
+"use client";
 
-import { LatestPost } from "~/app/_components/post";
-import { auth } from "~/server/auth";
-import { api, HydrateClient } from "~/trpc/server";
+import { useState } from "react";
+import { api } from "~/trpc/react";
+import { AddTodoForm } from "./components/AddTodoForm";
+import { TodoList } from "./components/TodoList";
+import type { Todo } from "~/types/todo";
+import Timetable from "./components/Timetable";
 
-export default async function Home() {
-  const hello = await api.post.hello({ text: "from tRPC" });
-  const session = await auth();
+const CATEGORIES = [
+  "All",
+  "Hass",
+  "Soft Abs",
+  "Game Dev",
+  "Capstone",
+  "Misc",
+] as const;
 
-  if (session?.user) {
-    void api.post.getLatest.prefetch();
-  }
+// Helper to format a date for input (YYYY-MM-DD)
+
+export default function Home(): JSX.Element {
+  const utils = api.useUtils();
+  const todosQuery = api.todo.getAll.useQuery();
+  const createTodo = api.todo.create.useMutation({
+    onSuccess: async () => {
+      await utils.todo.getAll.invalidate();
+    },
+  });
+  const toggleTodo = api.todo.toggle.useMutation({
+    onSuccess: async () => {
+      await utils.todo.getAll.invalidate();
+    },
+  });
+  const deleteTodo = api.todo.delete.useMutation({
+    onSuccess: async () => {
+      await utils.todo.getAll.invalidate();
+    },
+  });
+  const editTodo = api.todo.edit.useMutation({
+    onSuccess: async () => {
+      await utils.todo.getAll.invalidate();
+    },
+  });
+
+  const handleAddTodo = async (
+    text: string,
+    category: string,
+    dueDate: string,
+  ): Promise<void> => {
+    try {
+      await createTodo.mutateAsync({
+        text,
+        category,
+        dueDate: dueDate || null,
+      });
+    } catch (error) {
+      console.error("Failed to create todo", error);
+    }
+  };
+
+  const handleToggle = (id: string): void => {
+    toggleTodo.mutate({ id });
+  };
+
+  const handleDelete = (id: string): void => {
+    deleteTodo.mutate({ id });
+  };
+
+  const handleEdit = async (
+    id: string,
+    newData: { text: string; category: string; dueDate: string; notes: string },
+  ): Promise<void> => {
+    try {
+      await editTodo.mutateAsync({
+        id,
+        text: newData.text,
+        category: newData.category,
+        dueDate: newData.dueDate || null,
+        notes: newData.notes || null,
+      });
+    } catch (error) {
+      console.error("Failed to update todo", error);
+    }
+  };
+
+  const [selectedCategory, setSelectedCategory] =
+    useState<(typeof CATEGORIES)[number]>("All");
+
+  // Sort todos by due date, keeping those without a due date at the end
+  const todosData: Todo[] = todosQuery.data
+    ? todosQuery.data.slice().sort((a, b) => {
+        if (a.dueDate && b.dueDate) {
+          return new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime();
+        }
+        if (a.dueDate) return -1;
+        if (b.dueDate) return 1;
+        return 0;
+      })
+    : [];
+
+  // Filter todos by selected category
+  const filteredTodos =
+    selectedCategory === "All"
+      ? todosData
+      : todosData.filter((todo) => todo.category === selectedCategory);
 
   return (
-    <HydrateClient>
-      <main className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-b from-[#2e026d] to-[#15162c] text-white">
-        <div className="container flex flex-col items-center justify-center gap-12 px-4 py-16">
-          <h1 className="text-5xl font-extrabold tracking-tight sm:text-[5rem]">
-            Create <span className="text-[hsl(280,100%,70%)]">T3</span> App
-          </h1>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:gap-8">
-            <Link
-              className="flex max-w-xs flex-col gap-4 rounded-xl bg-white/10 p-4 hover:bg-white/20"
-              href="https://create.t3.gg/en/usage/first-steps"
-              target="_blank"
+    <div className="mx-auto flex w-full flex-col gap-4 rounded-lg p-8 shadow-lg">
+      <div className="flex flex-row">
+        <div className="flex flex-col space-y-2 pr-2">
+          {CATEGORIES.map((category) => (
+            <button
+              key={category}
+              onClick={() => setSelectedCategory(category)}
+              className={`rounded px-4 py-2 text-left ${
+                selectedCategory === category
+                  ? "bg-pink-500 text-white"
+                  : "bg-gray-200 text-gray-700"
+              }`}
             >
-              <h3 className="text-2xl font-bold">First Steps →</h3>
-              <div className="text-lg">
-                Just the basics - Everything you need to know to set up your
-                database and authentication.
-              </div>
-            </Link>
-            <Link
-              className="flex max-w-xs flex-col gap-4 rounded-xl bg-white/10 p-4 hover:bg-white/20"
-              href="https://create.t3.gg/en/introduction"
-              target="_blank"
-            >
-              <h3 className="text-2xl font-bold">Documentation →</h3>
-              <div className="text-lg">
-                Learn more about Create T3 App, the libraries it uses, and how
-                to deploy it.
-              </div>
-            </Link>
-          </div>
-          <div className="flex flex-col items-center gap-2">
-            <p className="text-2xl text-white">
-              {hello ? hello.greeting : "Loading tRPC query..."}
-            </p>
-
-            <div className="flex flex-col items-center justify-center gap-4">
-              <p className="text-center text-2xl text-white">
-                {session && <span>Logged in as {session.user?.name}</span>}
-              </p>
-              <Link
-                href={session ? "/api/auth/signout" : "/api/auth/signin"}
-                className="rounded-full bg-white/10 px-10 py-3 font-semibold no-underline transition hover:bg-white/20"
-              >
-                {session ? "Sign out" : "Sign in"}
-              </Link>
-            </div>
-          </div>
-
-          {session?.user && <LatestPost />}
+              {category}
+            </button>
+          ))}
         </div>
-      </main>
-    </HydrateClient>
+        <div className="w-3/4">
+          <AddTodoForm onAdd={handleAddTodo} />
+
+          <TodoList
+            todos={filteredTodos}
+            onToggle={handleToggle}
+            onDelete={handleDelete}
+            onEdit={handleEdit}
+          />
+          {todosQuery.isLoading && (
+            <div className="text-center text-pink-500">Loading...</div>
+          )}
+        </div>
+      </div>
+
+      <Timetable />
+    </div>
   );
 }
